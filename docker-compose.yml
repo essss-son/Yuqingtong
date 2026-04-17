@@ -1,0 +1,90 @@
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: yuqingtong-postgres
+    environment:
+      POSTGRES_USER: yuqing
+      POSTGRES_PASSWORD: yuqing123
+      POSTGRES_DB: yuqing_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U yuqing -d yuqing_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - yuqingtong-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: yuqingtong-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - yuqingtong-network
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: yuqingtong-backend
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=yuqing
+      - POSTGRES_PASSWORD=yuqing123
+      - POSTGRES_DB=yuqing_db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-your-api-key}
+      - OPENAI_API_BASE=${OPENAI_API_BASE:-}
+      - LLM_MODEL=${LLM_MODEL:-gpt-3.5-turbo}
+      - DEBUG=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app/backend
+      - model_cache:/root/.cache
+    networks:
+      - yuqingtong-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    container_name: yuqingtong-frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    networks:
+      - yuqingtong-network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  model_cache:
+    driver: local
+
+networks:
+  yuqingtong-network:
+    driver: bridge
